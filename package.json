@@ -1,0 +1,23 @@
+{
+  "name": "personal-toolbox",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A frontend/backend separated personal toolbox monorepo.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "packageManager": "pnpm@10.13.1",
+  "scripts": {
+    "dev": "corepack pnpm --filter @personal-toolbox/contracts build && corepack pnpm --parallel --filter @personal-toolbox/web --filter @personal-toolbox/api dev",
+    "dev:web": "corepack pnpm --filter @personal-toolbox/web dev",
+    "dev:api": "corepack pnpm --filter @personal-toolbox/contracts build && corepack pnpm --filter @personal-toolbox/api dev",
+    "build": "corepack pnpm -r --if-present build",
+    "test": "corepack pnpm -r --if-present test",
+    "typecheck": "corepack pnpm -r --if-present typecheck",
+    "lint": "corepack pnpm -r --if-present lint"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}

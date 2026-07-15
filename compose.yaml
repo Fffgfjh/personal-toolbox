@@ -1,0 +1,38 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_APP_NAME: ${VITE_APP_NAME:-个人工具箱}
+        VITE_APP_SHORT_NAME: ${VITE_APP_SHORT_NAME:-工具箱}
+        VITE_APP_DESCRIPTION: ${VITE_APP_DESCRIPTION:-常用开发、文件、图片与文档工具}
+        VITE_API_BASE_URL: /api
+        VITE_REPOSITORY_URL: ${VITE_REPOSITORY_URL:-}
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3001
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080}
+      DOCUMENT_SERVICE_BASE_URL: ${DOCUMENT_SERVICE_BASE_URL:-}
+      DOCUMENT_SERVICE_API_KEY: ${DOCUMENT_SERVICE_API_KEY:-}
+      DOCUMENT_SERVICE_TIMEOUT_MS: ${DOCUMENT_SERVICE_TIMEOUT_MS:-180000}
+      MAX_FILE_BYTES: ${MAX_FILE_BYTES:-104857600}
+      MAX_REQUEST_BYTES: ${MAX_REQUEST_BYTES:-262144000}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-60}
+      RATE_LIMIT_WINDOW: ${RATE_LIMIT_WINDOW:-1 minute}
+      ENABLE_API_DOCS: ${ENABLE_API_DOCS:-true}
+    expose:
+      - "3001"
+    restart: unless-stopped

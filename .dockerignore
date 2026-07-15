@@ -1,0 +1,14 @@
+.git
+.github
+node_modules
+**/node_modules
+**/dist
+coverage
+**/coverage
+*.log
+.env
+.env.*
+!.env.example
+findings.md
+progress.md
+task_plan.md
