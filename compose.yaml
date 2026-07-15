@@ -9,6 +9,9 @@ services:
         VITE_APP_DESCRIPTION: ${VITE_APP_DESCRIPTION:-常用开发、文件、图片与文档工具}
         VITE_API_BASE_URL: /api
         VITE_REPOSITORY_URL: ${VITE_REPOSITORY_URL:-}
+        VITE_OWNER_NAME: ${VITE_OWNER_NAME:-}
+        VITE_OWNER_URL: ${VITE_OWNER_URL:-}
+        VITE_SUPPORT_URL: ${VITE_SUPPORT_URL:-}
     ports:
       - "${WEB_PORT:-8080}:8080"
     depends_on:

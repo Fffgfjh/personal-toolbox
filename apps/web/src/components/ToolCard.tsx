@@ -15,7 +15,7 @@ export function ToolCard({ tool }: { tool: ToolDefinition }) {
         <span className="tool-card-copy">
           <span className="tool-card-title">
             {tool.name}
-            {tool.serverSide && <Server size={14} aria-label="需要服务端" />}
+            {tool.serverSide && <span className="server-badge" title="需要服务端处理"><Server size={12} aria-label="需要服务端" /> API</span>}
           </span>
           <span className="tool-card-description">{tool.description}</span>
         </span>

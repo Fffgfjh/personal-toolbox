@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Heart, Layers3, ShieldCheck, Sparkles } from 'lucide-react';
+import { Heart, Layers3, ShieldCheck, Sparkles, SearchX } from 'lucide-react';
 import { ToolCard } from '../components/ToolCard';
 import { useFavorites } from '../hooks/useFavorites';
 import { toolCatalog, toolCategories } from '../tools/registry';
@@ -71,5 +71,5 @@ function ToolSection({ title, description, icon, tools }: { title: string; descr
 }
 
 function SearchEmpty() {
-  return <span className="empty-icon">?</span>;
+  return <span className="empty-icon"><SearchX size={32} /></span>;
 }

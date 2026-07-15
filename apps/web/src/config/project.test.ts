@@ -16,11 +16,17 @@ describe('project configuration', () => {
       VITE_APP_NAME: ' My Toolbox ',
       VITE_REPOSITORY_URL: 'https://github.com/example/toolbox/',
       VITE_API_BASE_URL: 'https://tools.example.com/api/',
+      VITE_OWNER_NAME: 'Example Owner',
+      VITE_OWNER_URL: 'https://example.com/owner',
+      VITE_SUPPORT_URL: 'https://example.com/support',
     });
 
     expect(config.name).toBe('My Toolbox');
     expect(config.issuesUrl).toBe('https://github.com/example/toolbox/issues/new/choose');
     expect(config.apiBaseUrl).toBe('https://tools.example.com/api');
+    expect(config.ownerName).toBe('Example Owner');
+    expect(config.ownerUrl).toBe('https://example.com/owner');
+    expect(config.supportUrl).toBe('https://example.com/support');
   });
 
   it('allows the document gateway to be disabled explicitly', () => {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Copy, Play, RefreshCw, Trash2 } from 'lucide-react';
 import { hash as bcryptHash } from 'bcryptjs';
 import { md5, sha1, sha256 } from 'hash-wasm';
@@ -21,6 +21,10 @@ import {
   yamlToJson,
 } from './textOperations';
 import type { CaseMode } from './textOperations';
+
+const BCRYPT_MIN_ROUNDS = 4;
+const BCRYPT_MAX_ROUNDS = 14;
+const BCRYPT_ROUNDS_ERROR = `Bcrypt 计算轮数必须是 ${BCRYPT_MIN_ROUNDS} 到 ${BCRYPT_MAX_ROUNDS} 之间的整数。`;
 
 export type UtilityKind =
   | 'json'
@@ -66,6 +70,9 @@ const samples: Partial<Record<UtilityKind, string>> = {
 };
 
 export function UtilityTool({ kind }: { kind: UtilityKind }) {
+  const mountedRef = useRef(true);
+  const runGenerationRef = useRef(0);
+  const runningRef = useRef(false);
   const [input, setInput] = useState(samples[kind] || '');
   const [output, setOutput] = useState('');
   const [error, setError] = useState('');
@@ -80,23 +87,52 @@ export function UtilityTool({ kind }: { kind: UtilityKind }) {
   const [secret, setSecret] = useState('secret-key');
   const [length, setLength] = useState(24);
   const [algorithm, setAlgorithm] = useState('sha256');
-  const [rounds, setRounds] = useState(10);
+  const [roundsInput, setRoundsInput] = useState('10');
+  const bcryptRounds = parseBcryptRounds(roundsInput);
+  const bcryptRoundsError = kind === 'bcrypt' && bcryptRounds === null ? BCRYPT_ROUNDS_ERROR : '';
+  const displayedError = bcryptRoundsError || error;
 
   const inputHidden = kind === 'uuid' || kind === 'password';
   const hint = useMemo(() => kind === 'jwt' ? '这里只解码，不会验证签名，也不会把 Token 发送到服务器。' : '', [kind]);
 
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      runGenerationRef.current += 1;
+      runningRef.current = false;
+    };
+  }, []);
+
   async function run() {
+    if (runningRef.current) return;
+    runningRef.current = true;
+    const generation = runGenerationRef.current + 1;
+    runGenerationRef.current = generation;
+    const isCurrent = () => mountedRef.current && generation === runGenerationRef.current;
     setBusy(true);
     setError('');
     try {
       const result = await execute();
+      if (!isCurrent()) return;
       setOutput(result);
     } catch (runError) {
+      if (!isCurrent()) return;
       setOutput('');
       setError(runError instanceof Error ? runError.message : '处理失败，请检查输入。');
     } finally {
-      setBusy(false);
+      if (isCurrent()) {
+        runningRef.current = false;
+        setBusy(false);
+      }
     }
+  }
+
+  function clear() {
+    if (runningRef.current) return;
+    setInput('');
+    setOutput('');
+    setError('');
   }
 
   async function execute(): Promise<string> {
@@ -120,7 +156,10 @@ export function UtilityTool({ kind }: { kind: UtilityKind }) {
       case 'color': return JSON.stringify(parseColor(input), null, 2);
       case 'sql': return formatSqlText(input);
       case 'xml': return formatXml(input);
-      case 'bcrypt': return bcryptHash(input, rounds);
+      case 'bcrypt': {
+        if (bcryptRounds === null) throw new Error(BCRYPT_ROUNDS_ERROR);
+        return bcryptHash(input, bcryptRounds);
+      }
     }
   }
 
@@ -135,35 +174,35 @@ export function UtilityTool({ kind }: { kind: UtilityKind }) {
       <div className="workbench-toolbar">
         <div className="control-row">
           {['json', 'yaml-json', 'base64', 'url', 'html-entities'].includes(kind) && (
-            <select value={direction} onChange={(event) => setDirection(event.target.value as typeof direction)} aria-label="转换方向">
+            <select value={direction} disabled={busy} onChange={(event) => setDirection(event.target.value as typeof direction)} aria-label="转换方向">
               <option value="forward">{forwardLabel(kind)}</option>
               <option value="reverse">{reverseLabel(kind)}</option>
             </select>
           )}
-          {kind === 'case' && <select value={caseMode} onChange={(event) => setCaseMode(event.target.value as CaseMode)}><option value="snake">snake_case</option><option value="camel">camelCase</option><option value="kebab">kebab-case</option><option value="constant">CONSTANT_CASE</option><option value="title">Title Case</option><option value="upper">大写</option><option value="lower">小写</option></select>}
-          {kind === 'number-base' && <><label>输入进制<input type="number" min="2" max="36" value={fromBase} onChange={(event) => setFromBase(Number(event.target.value))} /></label><label>输出进制<input type="number" min="2" max="36" value={toBase} onChange={(event) => setToBase(Number(event.target.value))} /></label></>}
-          {kind === 'regex' && <><label className="grow-control">表达式<input value={pattern} onChange={(event) => setPattern(event.target.value)} /></label><label>标志<input className="short-input" value={flags} onChange={(event) => setFlags(event.target.value)} /></label></>}
-          {kind === 'hmac' && <label className="grow-control">密钥<input type="password" value={secret} onChange={(event) => setSecret(event.target.value)} /></label>}
-          {kind === 'hash' && <select value={algorithm} onChange={(event) => setAlgorithm(event.target.value)}><option value="sha256">SHA-256</option><option value="sha1">SHA-1</option><option value="md5">MD5</option></select>}
-          {kind === 'password' && <label>长度<input type="number" min="8" max="256" value={length} onChange={(event) => setLength(Number(event.target.value))} /></label>}
-          {kind === 'bcrypt' && <label>计算轮数<input type="number" min="4" max="14" value={rounds} onChange={(event) => setRounds(Number(event.target.value))} /></label>}
+          {kind === 'case' && <select value={caseMode} disabled={busy} aria-label="大小写格式" onChange={(event) => setCaseMode(event.target.value as CaseMode)}><option value="snake">snake_case</option><option value="camel">camelCase</option><option value="kebab">kebab-case</option><option value="constant">CONSTANT_CASE</option><option value="title">Title Case</option><option value="upper">大写</option><option value="lower">小写</option></select>}
+          {kind === 'number-base' && <><label>输入进制<input type="number" min="2" max="36" value={fromBase} disabled={busy} onChange={(event) => setFromBase(Number(event.target.value))} /></label><label>输出进制<input type="number" min="2" max="36" value={toBase} disabled={busy} onChange={(event) => setToBase(Number(event.target.value))} /></label></>}
+          {kind === 'regex' && <><label className="grow-control">表达式<input value={pattern} disabled={busy} onChange={(event) => setPattern(event.target.value)} /></label><label>标志<input className="short-input" value={flags} disabled={busy} onChange={(event) => setFlags(event.target.value)} /></label></>}
+          {kind === 'hmac' && <label className="grow-control">密钥<input type="password" value={secret} disabled={busy} onChange={(event) => setSecret(event.target.value)} /></label>}
+          {kind === 'hash' && <select value={algorithm} disabled={busy} aria-label="摘要算法" onChange={(event) => setAlgorithm(event.target.value)}><option value="sha256">SHA-256</option><option value="sha1">SHA-1</option><option value="md5">MD5</option></select>}
+          {kind === 'password' && <label>长度<input type="number" min="8" max="256" value={length} disabled={busy} onChange={(event) => setLength(Number(event.target.value))} /></label>}
+          {kind === 'bcrypt' && <label>计算轮数<input type="number" min={BCRYPT_MIN_ROUNDS} max={BCRYPT_MAX_ROUNDS} step="1" value={roundsInput} disabled={busy} aria-invalid={Boolean(bcryptRoundsError)} aria-describedby={bcryptRoundsError ? 'bcrypt-rounds-error' : undefined} onChange={(event) => { setRoundsInput(event.target.value); setError(''); }} /></label>}
         </div>
         <div className="toolbar-actions">
-          <button className="secondary-button" type="button" onClick={() => { setInput(''); setOutput(''); setError(''); }}><Trash2 size={16} /> 清空</button>
-          <button className="primary-button" type="button" onClick={run} disabled={busy}><Play size={16} /> {busy ? '处理中…' : actionLabel(kind)}</button>
+          <button className="secondary-button" type="button" onClick={clear} disabled={busy}><Trash2 size={16} /> 清空</button>
+          <button className="primary-button" type="button" onClick={run} disabled={busy || Boolean(bcryptRoundsError)}><Play size={16} /> {busy ? '处理中…' : actionLabel(kind)}</button>
         </div>
       </div>
 
       {hint && <p className="privacy-hint">{hint}</p>}
       <div className={`editor-grid ${inputHidden ? 'single-output' : ''}`}>
-        {!inputHidden && <label className="editor-panel"><span>输入</span><textarea value={input} onChange={(event) => setInput(event.target.value)} spellCheck={false} /></label>}
+        {!inputHidden && <label className="editor-panel"><span>输入</span><textarea value={input} disabled={busy} onChange={(event) => setInput(event.target.value)} spellCheck={false} /></label>}
         <label className="editor-panel output-panel">
           <span>结果 <button type="button" onClick={copyOutput} disabled={!output}>{copied ? <Check size={15} /> : <Copy size={15} />}{copied ? '已复制' : '复制'}</button></span>
           <textarea value={output} readOnly placeholder="处理结果会显示在这里" spellCheck={false} />
         </label>
       </div>
-      {error && <div className="error-banner" role="alert">{error}</div>}
-      {(kind === 'uuid' || kind === 'password') && <button className="secondary-button regenerate-button" type="button" onClick={run}><RefreshCw size={16} /> 再生成一组</button>}
+      {displayedError && <div id={bcryptRoundsError ? 'bcrypt-rounds-error' : undefined} className="error-banner" role="alert">{displayedError}</div>}
+      {(kind === 'uuid' || kind === 'password') && <button className="secondary-button regenerate-button" type="button" onClick={run} disabled={busy}><RefreshCw size={16} /> 再生成一组</button>}
     </div>
   );
 }
@@ -193,6 +232,15 @@ function createPassword(length: number) {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*_-+=';
   const bytes = crypto.getRandomValues(new Uint8Array(Math.max(8, Math.min(256, length))));
   return [...bytes].map((byte) => alphabet[byte % alphabet.length]).join('');
+}
+
+function parseBcryptRounds(value: string) {
+  const normalized = value.trim();
+  if (!/^\d+$/.test(normalized)) return null;
+  const rounds = Number(normalized);
+  return Number.isSafeInteger(rounds) && rounds >= BCRYPT_MIN_ROUNDS && rounds <= BCRYPT_MAX_ROUNDS
+    ? rounds
+    : null;
 }
 
 function convertTimestamp(input: string) {

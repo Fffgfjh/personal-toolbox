@@ -83,7 +83,8 @@ pnpm build
 ## 自定义入口
 
 - 品牌默认值：`apps/web/src/config/defaults.ts`
-- 构建时覆盖：`apps/web/.env.example`
+- 构建时覆盖：`apps/web/.env.example`（站点名称、仓库、作者主页、支持链接和 API 地址）
+- Compose 构建覆盖：复制 `.env.docker.example` 为 `.env`；`VITE_OWNER_NAME`、`VITE_OWNER_URL`、`VITE_SUPPORT_URL` 会传入前端镜像
 - 工具分类和入口：`apps/web/src/tools/registry.tsx`
 - 文档工具公开契约：`packages/contracts/src/index.ts`
 - 上游服务白名单：`apps/api/src/document-upstream.ts`

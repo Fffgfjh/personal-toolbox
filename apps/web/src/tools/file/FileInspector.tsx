@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check, Clipboard, FileCheck2, FileUp, RotateCcw } from 'lucide-react';
 import { createMD5, createSHA256 } from 'hash-wasm';
 import { detectFileType, formatBytes } from './fileAnalysis';
@@ -13,34 +13,54 @@ interface AnalysisResult {
 
 export function FileInspector({ mode }: { mode: 'checksum' | 'type' }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const generationRef = useRef(0);
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [copied, setCopied] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => () => {
+    generationRef.current += 1;
+  }, []);
 
   async function analyze(selected: File) {
+    const generation = generationRef.current + 1;
+    generationRef.current = generation;
+    const isCurrent = () => generation === generationRef.current;
     setFile(selected);
     setBusy(true);
     setResult(null);
     setProgress(0);
+    setError('');
     const started = performance.now();
     try {
       const header = new Uint8Array(await selected.slice(0, 32).arrayBuffer());
+      if (!isCurrent()) return;
       const type = detectFileType(header, selected.name, selected.type);
       const md5 = await createMD5();
+      if (!isCurrent()) return;
       const sha256 = await createSHA256();
+      if (!isCurrent()) return;
       const chunkSize = 4 * 1024 * 1024;
       for (let offset = 0; offset < selected.size; offset += chunkSize) {
         const chunk = new Uint8Array(await selected.slice(offset, offset + chunkSize).arrayBuffer());
+        if (!isCurrent()) return;
         md5.update(chunk);
         sha256.update(chunk);
-        setProgress(selected.size ? Math.min(100, Math.round(((offset + chunk.byteLength) / selected.size) * 100)) : 100);
+        if (isCurrent()) {
+          setProgress(Math.min(100, Math.round(((offset + chunk.byteLength) / selected.size) * 100)));
+        }
       }
+      if (!isCurrent()) return;
+      if (selected.size === 0) setProgress(100);
       setResult({ type, md5: md5.digest('hex'), sha256: sha256.digest('hex'), elapsedMs: performance.now() - started });
+    } catch {
+      if (isCurrent()) setError('文件分析失败，请重试或更换文件。');
     } finally {
-      setBusy(false);
+      if (isCurrent()) setBusy(false);
     }
   }
 
@@ -56,9 +76,12 @@ export function FileInspector({ mode }: { mode: 'checksum' | 'type' }) {
   }
 
   function reset() {
+    generationRef.current += 1;
     setFile(null);
     setResult(null);
+    setBusy(false);
     setProgress(0);
+    setError('');
     if (inputRef.current) inputRef.current.value = '';
   }
 
@@ -90,17 +113,18 @@ export function FileInspector({ mode }: { mode: 'checksum' | 'type' }) {
       <input ref={inputRef} type="file" hidden onChange={(event) => chooseFiles(event.target.files)} />
 
       {result && (
-        <div className="analysis-results">
+        <div className="analysis-results" role="status" aria-live="polite">
           <section><h3>文件识别</h3><dl><div><dt>推测类型</dt><dd>{result.type.label}</dd></div><div><dt>标准 MIME</dt><dd>{result.type.mime}</dd></div><div><dt>识别依据</dt><dd>{confidenceLabel(result.type.confidence)}</dd></div><div><dt>最后修改</dt><dd>{file ? new Date(file.lastModified).toLocaleString() : '-'}</dd></div></dl></section>
           <section className={mode === 'type' ? 'muted-result' : ''}><h3>文件摘要 <small>耗时 {Math.round(result.elapsedMs)}ms</small></h3><HashRow label="MD5" value={result.md5} copied={copied} onCopy={copy} /><HashRow label="SHA-256" value={result.sha256} copied={copied} onCopy={copy} /></section>
         </div>
       )}
+      {error && <div className="error-banner" role="alert">{error}</div>}
     </div>
   );
 }
 
 function HashRow({ label, value, copied, onCopy }: { label: string; value: string; copied: string; onCopy: (label: string, value: string) => void }) {
-  return <div className="hash-row"><span>{label}</span><code>{value}</code><button type="button" onClick={() => void onCopy(label, value)}>{copied === label ? <Check size={16} /> : <Clipboard size={16} />}</button></div>;
+  return <div className="hash-row"><span>{label}</span><code>{value}</code><button type="button" aria-label={`${copied === label ? '已复制' : '复制'} ${label} 摘要`} onClick={() => void onCopy(label, value)}>{copied === label ? <Check size={16} /> : <Clipboard size={16} />}</button></div>;
 }
 
 function confidenceLabel(confidence: DetectedFileType['confidence']) {

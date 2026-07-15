@@ -1,4 +1,4 @@
-import { Suspense, useEffect } from 'react';
+import { Fragment, Suspense, useEffect } from 'react';
 import { ArrowLeft, Heart, Server } from 'lucide-react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { useFavorites } from '../hooks/useFavorites';
@@ -30,8 +30,13 @@ export function ToolPage() {
       </header>
       {tool.serverSide && <div className="server-notice"><Server size={17} /><span>此工具通过独立后端处理文件；浏览器本地工具不会上传内容。</span></div>}
       <section className="tool-workspace">
-        <Suspense fallback={<div className="loading-workspace">正在加载工具…</div>}>
-          {tool.render()}
+        <Suspense fallback={
+          <div className="skeleton-workspace">
+            <div className="skeleton-block" style={{ height: 60, width: '100%' }}></div>
+            <div className="skeleton-block" style={{ height: 300, width: '100%', marginTop: 24 }}></div>
+          </div>
+        }>
+          <Fragment key={tool.id}>{tool.render()}</Fragment>
         </Suspense>
       </section>
     </div>
