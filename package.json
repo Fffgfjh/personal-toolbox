@@ -9,12 +9,13 @@
   },
   "packageManager": "pnpm@10.13.1",
   "scripts": {
-    "dev": "corepack pnpm --filter @personal-toolbox/contracts build && corepack pnpm --parallel --filter @personal-toolbox/web --filter @personal-toolbox/api dev",
-    "dev:web": "corepack pnpm --filter @personal-toolbox/web dev",
-    "dev:api": "corepack pnpm --filter @personal-toolbox/contracts build && corepack pnpm --filter @personal-toolbox/api dev",
+    "contracts:build": "corepack pnpm --filter @personal-toolbox/contracts build",
+    "dev": "corepack pnpm run contracts:build && corepack pnpm --parallel --filter @personal-toolbox/web --filter @personal-toolbox/api dev",
+    "dev:web": "corepack pnpm run contracts:build && corepack pnpm --filter @personal-toolbox/web dev",
+    "dev:api": "corepack pnpm run contracts:build && corepack pnpm --filter @personal-toolbox/api dev",
     "build": "corepack pnpm -r --if-present build",
-    "test": "corepack pnpm -r --if-present test",
-    "typecheck": "corepack pnpm -r --if-present typecheck",
+    "test": "corepack pnpm run contracts:build && corepack pnpm -r --if-present test",
+    "typecheck": "corepack pnpm run contracts:build && corepack pnpm -r --if-present typecheck",
     "lint": "corepack pnpm -r --if-present lint"
   },
   "pnpm": {
