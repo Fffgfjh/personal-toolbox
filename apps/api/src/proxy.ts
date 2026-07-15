@@ -1,88 +1,101 @@
 import type { FastifyReply } from 'fastify';
 import type { DocumentToolDefinition } from '@personal-toolbox/contracts';
-import type { ApiConfig } from './config.js';
 import { ApiError } from './errors.js';
 import type { ParsedDocumentRequest } from './multipart.js';
 import { safeFilename } from './multipart.js';
-import { documentUpstreamPaths } from './document-upstream.js';
-
-export type FetchImplementation = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
+import {
+  DocumentEngineError,
+  type DocumentEngineAdapter,
+} from './document-engine/adapter.js';
 
 export async function proxyDocumentRequest(
-  config: ApiConfig,
+  engine: DocumentEngineAdapter,
   definition: DocumentToolDefinition,
   parsed: ParsedDocumentRequest,
   reply: FastifyReply,
-  fetchImplementation: FetchImplementation = fetch,
+  requestId: string,
+  signal?: AbortSignal,
 ) {
-  if (!config.documentServiceBaseUrl) {
+  if (!engine.configured) {
     throw new ApiError(503, 'document_service_disabled', '文档处理服务尚未配置。');
   }
 
-  const body = new FormData();
-  for (const file of parsed.files) {
-    const arrayBuffer = new ArrayBuffer(file.bytes.byteLength);
-    new Uint8Array(arrayBuffer).set(file.bytes);
-    body.append('fileInput', new Blob([arrayBuffer], { type: file.mimetype }), file.filename);
-  }
-  for (const [name, value] of Object.entries(parsed.fields)) {
-    body.append(name, value);
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), config.documentServiceTimeoutMs);
-  let response: Response;
+  let result;
   try {
-    const headers = config.documentServiceApiKey ? { 'X-API-KEY': config.documentServiceApiKey } : undefined;
-    response = await fetchImplementation(
-      `${config.documentServiceBaseUrl}${documentUpstreamPaths[definition.id]}`,
-      { method: 'POST', body, headers, signal: controller.signal },
-    );
+    result = await engine.execute({ definition, parsed, requestId, signal });
   } catch (error) {
-    if (controller.signal.aborted) {
-      throw new ApiError(504, 'upstream_timeout', '文档处理超时，请稍后重试。');
+    if (error instanceof DocumentEngineError) {
+      throw documentEngineApiError(error);
     }
-    throw new ApiError(502, 'upstream_unavailable', `无法连接文档处理服务：${(error as Error).message}`);
-  } finally {
-    clearTimeout(timeout);
-  }
-
-  if (!response.ok) {
-    const upstreamMessage = await readUpstreamMessage(response);
-    const status = response.status === 429 ? 429 : response.status >= 500 ? 502 : 422;
-    throw new ApiError(status, status === 429 ? 'busy' : 'upstream_rejected', upstreamMessage);
+    throw error;
   }
 
   const fallbackFilename = `result.${definition.outputExtension}`;
-  const filename = responseFilename(response.headers.get('content-disposition'), fallbackFilename);
-  const contentType = response.headers.get('content-type') || 'application/octet-stream';
-  const bytes = Buffer.from(await response.arrayBuffer());
+  const filename = responseFilename(
+    result.contentDisposition ?? null,
+    fallbackFilename,
+    definition.outputExtension,
+  );
+  const body = Buffer.isBuffer(result.bytes)
+    ? result.bytes
+    : Buffer.from(result.bytes.buffer, result.bytes.byteOffset, result.bytes.byteLength);
 
   return reply
-    .header('content-type', contentType)
+    .header('content-type', result.contentType)
     .header('content-disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`)
-    .send(bytes);
+    .send(body);
 }
 
-async function readUpstreamMessage(response: Response) {
-  try {
-    const value = await response.json() as { message?: string; error?: string };
-    return value.message || value.error || '文档处理服务无法处理该文件。';
-  } catch {
-    return '文档处理服务无法处理该文件。';
+function documentEngineApiError(error: DocumentEngineError) {
+  const reason = error.reason;
+  switch (reason) {
+    case 'authentication':
+      return new ApiError(502, 'upstream_auth_failed', '文档处理服务认证失败，请检查服务端配置。');
+    case 'busy':
+      return new ApiError(429, 'busy', '文档处理服务繁忙，请稍后重试。');
+    case 'cancelled':
+      return new ApiError(499, 'request_cancelled', '请求已取消。');
+    case 'contract':
+      return new ApiError(502, 'upstream_contract_mismatch', '文档处理服务版本与当前适配器不兼容。');
+    case 'invalid_response':
+      return new ApiError(502, 'upstream_invalid_response', '文档处理服务返回了无效结果。');
+    case 'output_too_large':
+      return new ApiError(502, 'upstream_output_too_large', '文档处理结果超过服务端大小限制。');
+    case 'rejected':
+      return new ApiError(422, 'upstream_rejected', '文档处理服务拒绝了文件或参数。');
+    case 'timeout':
+      return new ApiError(504, 'upstream_timeout', '文档处理超时，请稍后重试。');
+    case 'unsupported':
+      return new ApiError(422, 'unsupported_option', '当前文档引擎不支持这个选项。');
+    case 'unavailable':
+      return new ApiError(502, 'upstream_unavailable', '暂时无法连接文档处理服务，请稍后重试。');
+    default: {
+      const exhaustive: never = reason;
+      return exhaustive;
+    }
   }
 }
 
-function responseFilename(header: string | null, fallback: string) {
+function responseFilename(header: string | null, fallback: string, outputExtension: string) {
   if (!header) return fallback;
   const encoded = header.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
   if (encoded) {
     try {
-      return safeFilename(decodeURIComponent(encoded.replace(/^"|"$/g, '')));
+      return filenameWithExpectedExtension(
+        safeFilename(decodeURIComponent(encoded.replace(/^"|"$/g, ''))),
+        fallback,
+        outputExtension,
+      );
     } catch {
       return fallback;
     }
   }
   const plain = header.match(/filename="([^"]+)"/i)?.[1] || header.match(/filename=([^;]+)/i)?.[1];
-  return plain ? safeFilename(plain) : fallback;
+  return plain
+    ? filenameWithExpectedExtension(safeFilename(plain), fallback, outputExtension)
+    : fallback;
+}
+
+function filenameWithExpectedExtension(filename: string, fallback: string, outputExtension: string) {
+  return filename.toLowerCase().endsWith(`.${outputExtension.toLowerCase()}`) ? filename : fallback;
 }

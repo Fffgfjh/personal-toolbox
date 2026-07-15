@@ -9,6 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "test": "vitest run",
+    "test:documents:live": "vitest run src/document-engine/live-document-engine.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src --max-warnings 0"
   },

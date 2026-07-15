@@ -6,10 +6,14 @@ export interface ApiConfig {
   documentServiceBaseUrl: string;
   documentServiceApiKey: string;
   documentServiceTimeoutMs: number;
+  documentServiceMaxConcurrency: number;
   maxFileBytes: number;
   maxRequestBytes: number;
+  maxOutputBytes: number;
+  requestTimeoutMs: number;
   rateLimitMax: number;
   rateLimitWindow: string;
+  trustProxyHops: number;
   enableApiDocs: boolean;
 }
 
@@ -18,6 +22,11 @@ type Environment = Record<string, string | undefined>;
 function positiveInteger(value: string | undefined, fallback: number) {
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function nonNegativeInteger(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
 function booleanValue(value: string | undefined, fallback: boolean) {
@@ -43,10 +52,14 @@ export function loadApiConfig(env: Environment = process.env): ApiConfig {
     documentServiceBaseUrl: trimTrailingSlash(env.DOCUMENT_SERVICE_BASE_URL),
     documentServiceApiKey: env.DOCUMENT_SERVICE_API_KEY?.trim() || '',
     documentServiceTimeoutMs: positiveInteger(env.DOCUMENT_SERVICE_TIMEOUT_MS, 180_000),
+    documentServiceMaxConcurrency: positiveInteger(env.DOCUMENT_SERVICE_MAX_CONCURRENCY, 1),
     maxFileBytes: positiveInteger(env.MAX_FILE_BYTES, 100 * 1024 * 1024),
     maxRequestBytes: positiveInteger(env.MAX_REQUEST_BYTES, 250 * 1024 * 1024),
+    maxOutputBytes: positiveInteger(env.MAX_OUTPUT_BYTES, 250 * 1024 * 1024),
+    requestTimeoutMs: positiveInteger(env.REQUEST_TIMEOUT_MS, 300_000),
     rateLimitMax: positiveInteger(env.RATE_LIMIT_MAX, 60),
     rateLimitWindow: env.RATE_LIMIT_WINDOW?.trim() || '1 minute',
+    trustProxyHops: nonNegativeInteger(env.TRUST_PROXY_HOPS, 0),
     enableApiDocs: booleanValue(env.ENABLE_API_DOCS, true),
   };
 }

@@ -8,21 +8,28 @@ import swaggerUi from '@fastify/swagger-ui';
 import { documentToolCatalog, findDocumentTool } from '@personal-toolbox/contracts';
 import type { ApiConfig } from './config.js';
 import { ApiError, sendApiError } from './errors.js';
+import { ConcurrencyGate } from './concurrency.js';
 import { parseDocumentRequest } from './multipart.js';
 import { proxyDocumentRequest } from './proxy.js';
-import type { FetchImplementation } from './proxy.js';
+import type { DocumentEngineAdapter } from './document-engine/adapter.js';
+import { createHttpDocumentEngine, type FetchImplementation } from './document-engine/http-adapter.js';
 
 export interface BuildAppOptions {
   config: ApiConfig;
   fetchImplementation?: FetchImplementation;
+  documentEngine?: DocumentEngineAdapter;
   logger?: boolean;
 }
 
-export async function buildApp({ config, fetchImplementation, logger = false }: BuildAppOptions) {
+export async function buildApp({ config, fetchImplementation, documentEngine, logger = false }: BuildAppOptions) {
+  const engine = documentEngine ?? createHttpDocumentEngine(config, fetchImplementation);
+  const documentGate = new ConcurrencyGate(config.documentServiceMaxConcurrency);
   const app = Fastify({
     logger: logger ? { level: config.logLevel } : false,
     bodyLimit: config.maxRequestBytes,
+    requestTimeout: config.requestTimeoutMs,
     requestIdHeader: 'x-request-id',
+    trustProxy: config.trustProxyHops > 0 ? config.trustProxyHops : false,
   });
 
   await app.register(helmet, { contentSecurityPolicy: false });
@@ -35,7 +42,11 @@ export async function buildApp({ config, fetchImplementation, logger = false }: 
       }
     },
   });
-  await app.register(rateLimit, { max: config.rateLimitMax, timeWindow: config.rateLimitWindow });
+  await app.register(rateLimit, {
+    max: config.rateLimitMax,
+    timeWindow: config.rateLimitWindow,
+    errorResponseBuilder: () => new ApiError(429, 'rate_limited', '请求过于频繁，请稍后重试。'),
+  });
   await app.register(multipart, {
     limits: {
       files: 10,
@@ -80,7 +91,7 @@ export async function buildApp({ config, fetchImplementation, logger = false }: 
   }, async () => ({
     status: 'ok' as const,
     service: 'personal-toolbox-api' as const,
-    documentServiceConfigured: Boolean(config.documentServiceBaseUrl),
+    documentServiceConfigured: engine.configured,
     timestamp: new Date().toISOString(),
   }));
 
@@ -103,8 +114,33 @@ export async function buildApp({ config, fetchImplementation, logger = false }: 
   }, async (request, reply) => {
     const definition = findDocumentTool(request.params.toolId);
     if (!definition) throw new ApiError(404, 'unknown_tool', '没有找到这个文档工具。');
-    const parsed = await parseDocumentRequest(request, definition, config.maxRequestBytes);
-    return proxyDocumentRequest(config, definition, parsed, reply, fetchImplementation);
+    if (!engine.configured) {
+      throw new ApiError(503, 'document_service_disabled', '文档处理服务尚未配置。');
+    }
+
+    const release = documentGate.tryAcquire();
+    if (!release) {
+      throw new ApiError(429, 'busy', '文档处理服务繁忙，请稍后重试。');
+    }
+    reply.raw.once('finish', release);
+    reply.raw.once('close', release);
+
+    const controller = new AbortController();
+    const onAborted = () => controller.abort();
+    const onReplyClosed = () => {
+      if (!reply.raw.writableEnded) controller.abort();
+    };
+    request.raw.once('aborted', onAborted);
+    reply.raw.once('close', onReplyClosed);
+    if (request.raw.aborted) onAborted();
+
+    try {
+      const parsed = await parseDocumentRequest(request, definition, config.maxRequestBytes);
+      return await proxyDocumentRequest(engine, definition, parsed, reply, request.id, controller.signal);
+    } finally {
+      request.raw.off('aborted', onAborted);
+      reply.raw.off('close', onReplyClosed);
+    }
   });
 
   return app;

@@ -41,7 +41,7 @@ export async function parseDocumentRequest(
       if (totalBytes > maxRequestBytes) {
         throw new ApiError(413, 'request_too_large', '上传文件总大小超过限制。');
       }
-      files.push({ filename, mimetype: part.mimetype, bytes: new Uint8Array(buffer) });
+      files.push({ filename, mimetype: part.mimetype, bytes: buffer });
     } else {
       if (!definition.fields.some((field) => field.name === part.fieldname)) {
         throw new ApiError(422, 'unknown_field', `不支持字段 ${part.fieldname}。`);

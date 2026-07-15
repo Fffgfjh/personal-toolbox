@@ -15,6 +15,7 @@
     "dev:api": "corepack pnpm run contracts:build && corepack pnpm --filter @personal-toolbox/api dev",
     "build": "corepack pnpm -r --if-present build",
     "test": "corepack pnpm run contracts:build && corepack pnpm -r --if-present test",
+    "test:documents:live": "corepack pnpm run contracts:build && corepack pnpm --filter @personal-toolbox/api test:documents:live",
     "typecheck": "corepack pnpm run contracts:build && corepack pnpm -r --if-present typecheck",
     "lint": "corepack pnpm -r --if-present lint"
   },

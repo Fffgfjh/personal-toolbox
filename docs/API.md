@@ -52,10 +52,12 @@ curl -f \
 }
 ```
 
-常见错误码：`unknown_tool`、`multipart_required`、`unsupported_file_type`、`file_too_large`、`request_too_large`、`too_many_files`、`missing_files`、`missing_field`、`invalid_field`、`document_service_disabled`、`upstream_timeout`、`upstream_unavailable`。
+常见错误码：`unknown_tool`、`multipart_required`、`unsupported_file_type`、`file_too_large`、`request_too_large`、`too_many_files`、`missing_files`、`missing_field`、`invalid_field`、`rate_limited`、`document_service_disabled`、`request_cancelled`、`busy`、`unsupported_option`、`upstream_rejected`、`upstream_auth_failed`、`upstream_contract_mismatch`、`upstream_invalid_response`、`upstream_output_too_large`、`upstream_timeout`、`upstream_unavailable`。
 
 ## 兼容原则
 
 - `/api/v1` 内已有字段只做向后兼容变更。
 - 新增工具可以扩展目录，不应让前端硬编码上游路径。
 - 上游错误统一映射为稳定的本地错误结构。
+
+供应商路径、字段转换、真实服务测试和替换适配器的方法见 [文档引擎接入说明](DOCUMENT-ENGINE.md)。
