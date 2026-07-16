@@ -24,13 +24,13 @@ services:
     read_only: true
     init: true
     restart: unless-stopped
-    pids_limit: 100
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
     cap_add:
       - CHOWN
+      - KILL
       - SETGID
       - SETUID
     tmpfs:
@@ -78,7 +78,6 @@ services:
     read_only: true
     init: true
     restart: unless-stopped
-    pids_limit: 200
     security_opt:
       - no-new-privileges:true
     cap_drop:
