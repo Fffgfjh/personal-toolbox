@@ -1,6 +1,6 @@
 # 生产部署
 
-这份 Compose 面向 `tool.766113.xyz` 当前的单机部署：Caddy 访问仅监听回环地址的 Web，Web 再通过内部网络访问 API；API 通过既有 `control-plane_default` 网络访问 Stirling PDF。
+这份 Compose 面向 `tool.766113.xyz` 当前的单机部署：Caddy 通过独立入口网络访问仅监听回环地址的 Web，Web 再通过内部网络访问 API；API 通过既有 `control-plane_default` 网络访问 Stirling PDF。
 
 ## 首次启动
 

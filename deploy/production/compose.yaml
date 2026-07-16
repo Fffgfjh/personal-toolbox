@@ -39,6 +39,7 @@ services:
       - /tmp:size=16m,mode=1777
     networks:
       - app
+      - ingress
     deploy:
       resources:
         limits:
@@ -102,6 +103,8 @@ networks:
   app:
     name: personal-toolbox_app
     internal: true
+  ingress:
+    name: personal-toolbox_ingress
   control-plane:
     external: true
     name: control-plane_default
